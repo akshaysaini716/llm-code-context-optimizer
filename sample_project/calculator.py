@@ -32,8 +32,6 @@ class Calculator:
     
     def divide(self, a: float, b: float) -> float:
         """Divide first number by second and record the operation"""
-        if b == 0:
-            raise ValueError("Cannot divide by zero")
         
         result = a / b
         self._record_operation(f"{a} ÷ {b} = {result}")

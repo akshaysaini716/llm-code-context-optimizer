@@ -1,13 +1,16 @@
 from fastapi import FastAPI, Query
 from pydantic import BaseModel
+import os
 from typing import Optional, List
 from services.context_service import (
     get_project_context, 
     get_graph_stats, 
     find_related_symbols,
-    clear_graph_cache
+    clear_graph_cache,
+    ContextService
 )
 from services.gemini_service import chat_with_gemini
+from embeddings.service import CodeSearchService
 
 app = FastAPI(title="LLM Code Context Optimizer", version="1.0.0")
 
@@ -18,6 +21,54 @@ class ChatRequest(BaseModel):
     relevant_only: bool = True
     max_tokens: int = 8000
     use_tree_sitter: bool = True
+    use_embedding: bool = False
+
+### using FAISS + SentenceTransformer start here ###
+@app.post("/chat-faiss")
+def chat_faiss(request: ChatRequest):
+    service = CodeSearchService(request.project_path)
+    context = service.query(request.message)
+    full_prompt = f"{context}\n\n{request.message}" if context else request.message
+    return chat_with_gemini(full_prompt)
+
+### using FAISS + SentenceTransformer end here ###
+
+""" using embeddings start here """
+
+@app.post("/chat-llm")
+def chat_llm(request: ChatRequest):
+    context_service = ContextService()
+
+    # Set repository path from request
+    context_service.repository_path = request.project_path
+    print(f"Repository path set to: {context_service.repository_path}")
+
+    # Build semantic index if not already built
+    context_service.build_semantic_index(request)
+    context_service.embedding_service.save_index("./faiss_index")
+
+    # Try to load existing index
+    context_service.embedding_service.load_index("./faiss_index")
+
+    # Debug: Check what was loaded
+    if hasattr(context_service.embedding_service, 'chunks'):
+        print(f"Loaded {len(context_service.embedding_service.chunks)} chunks")
+        for i, chunk in enumerate(context_service.embedding_service.chunks[:3]):  # Show first 3
+            print(f"Chunk {i}: {chunk.get('metadata', {})} - {chunk.get('content', '')[:100]}...")
+
+    # Get optimized context
+    relevant_context = context_service.get_relevant_context(request.message)
+    print(f"Relevant context length: {len(relevant_context) if relevant_context else 0}")
+    full_prompt = f"{relevant_context}\n\n{request.message}" if relevant_context else request.message
+
+    # Add context metadata to response
+    response = chat_with_gemini(full_prompt)
+    if request.include_context and request.project_path:
+        response["context_metadata"] = {"request-context": full_prompt}
+
+    return response
+
+""" using embeddings end here """
 
 @app.post("/chat")
 def chat(req: ChatRequest):
@@ -53,7 +104,9 @@ def chat(req: ChatRequest):
     # Add context metadata to response
     response = chat_with_gemini(full_prompt)
     if req.include_context and req.project_path:
-        response["context_metadata"] = ctx.get("metadata", {})
+        metadata = ctx.get("metadata", {})
+        metadata["request-context"] = full_prompt
+        response["context_metadata"] = metadata
     
     return response
 
