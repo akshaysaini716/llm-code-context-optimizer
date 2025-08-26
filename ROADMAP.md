@@ -42,4 +42,29 @@ Phase 4: Editor Integration
 
 
 
+----------------
+
+1. Tree-Sitter AST parser
+   - Built an dependency graph
+   - Basic File reader as fallback
+   /chat -> for basic
+   /chat-llm -> for AST
+
+
+2. FAISS + Semantic Embeddings
+   - With basic chunks 
+   - Chunks can be improved
+   - Using Sentence transformers (for embeddings)
+   - FAISS for search
+   - file watcher with auto reindex
+   /chat-faiss -> with context
+
+
+3. RAG implementations
+   - Qdrant as Vector Database and semantic search
+   - For code chunker using tree-sitter
+
+   Tasks:
+      1. Context aware conversation / feedback loop
+
 

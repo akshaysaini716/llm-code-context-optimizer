@@ -5,6 +5,7 @@ import numpy as np
 from pathlib import Path
 from .embedder import CodeEmbedder
 from .chunker import chunk_code_file
+from .chunker import ImprovedCodeChunker
 
 class CodeIndexer:
     def __init__(self, code_dir, index_path="faiss.index", meta_path="metadata.json"):
@@ -12,6 +13,7 @@ class CodeIndexer:
         self.index_path = Path(index_path)
         self.meta_path = Path(meta_path)
         self.embedder = CodeEmbedder()
+        self.code_chunker = ImprovedCodeChunker()
         self.index = None
         self.metadata = []
 
@@ -19,7 +21,8 @@ class CodeIndexer:
         all_chunks = []
         for file in self.code_dir.rglob("*"):
             if file.suffix in [".py", ".java", ".kt", ".js", ".ts"]:
-                chunks = chunk_code_file(file)
+               # chunks = chunk_code_file(file)
+                chunks = self.code_chunker.chunk_code_file(file)
                 all_chunks.extend(chunks)
 
         texts = [c["chunk"] for c in all_chunks]

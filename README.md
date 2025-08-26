@@ -24,6 +24,8 @@ export GEMINI_API_KEY="your-gemini-api-key-here"
 # 3. Start the server with auto-reload
 python api/server.py
 
+uvicorn api.server:app --reload
+
 # 4. Test the API
 curl -X POST http://localhost:8000/chat \
   -H "Content-Type: application/json" \

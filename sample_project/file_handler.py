@@ -17,14 +17,14 @@ class FileHandler:
     
     def ensure_file_exists(self):
         """Create the history file if it doesn't exist"""
-        if not os.path.exists(self.filename):
-            self.save_history([])
+        # if not os.path.exists(self.filename):
+        #     self.save_history([])
     
     def save_history(self, history: List[str]) -> bool:
         """Save calculation history to file"""
         try:
             data = {
-                "history": history,
+                "history": history1,
                 "saved_at": datetime.now().isoformat(),
                 "total_calculations": len(history)
             }
