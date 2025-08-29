@@ -28,7 +28,8 @@ class EnhancedContextRetriever:
         query: str, 
         top_k: int,
         include_related: bool = True,
-        expand_context: bool = True
+        expand_context: bool = True,
+        project_path: Optional[str] = None
     ) -> List[RetrievalResult]:
         """
         Retrieve chunks with enhanced context awareness
@@ -47,6 +48,7 @@ class EnhancedContextRetriever:
 
             initial_results = self.qdrant_client.search_similar(
                 query_vector=query_embedding,
+                project_path=project_path,
                 filters=None,
                 top_k=top_k * 2  # Get more for filtering
             )

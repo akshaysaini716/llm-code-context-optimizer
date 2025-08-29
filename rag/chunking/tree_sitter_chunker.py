@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import List, Tuple, Optional
 from rag.models import CodeBaseChunk
 from tree_sitter_language_pack import get_language, get_parser
-from tree_sitter import Parser, Node, Tree, Query, QueryCursor
+from tree_sitter import Parser, Node, Tree, Query
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 logger = logging.getLogger(__name__)
@@ -157,8 +157,7 @@ class TreeSitterChunker:
         imports = []
         if ext in self.queries and 'imports' in self.queries[ext]:
             query = self.queries[ext]['imports']
-            cursor = QueryCursor(query)
-            captures = cursor.captures(tree.root_node)
+            captures = query.captures(tree.root_node)
             if 'import' in captures:
                 for node in captures['import']:
                     import_text = content[node.start_byte:node.end_byte]
@@ -170,8 +169,7 @@ class TreeSitterChunker:
         functions = []
         if ext in self.queries and 'functions' in self.queries[ext]:
             query = self.queries[ext]['functions']
-            cursor = QueryCursor(query)
-            captures = cursor.captures(tree.root_node)
+            captures = query.captures(tree.root_node)
 
             func_names = captures.get('func-name', [])
             func_defs = captures.get('func-def', [])
@@ -186,8 +184,7 @@ class TreeSitterChunker:
         classes = []
         if ext in self.queries and 'classes' in self.queries[ext]:
             query = self.queries[ext]['classes']
-            cursor = QueryCursor(query)
-            captures = cursor.captures(tree.root_node)
+            captures = query.captures(tree.root_node)
 
             class_names = captures.get('class-name', [])
             class_defs = captures.get('class-def', [])

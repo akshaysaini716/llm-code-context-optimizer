@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from rag.configs import ChunkingConfig
 from rag.models import CodeBaseChunk
 from tree_sitter_language_pack import get_language, get_parser
-from tree_sitter import Parser, Node, Tree, Query, QueryCursor
+from tree_sitter import Parser, Node, Tree, Query
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import hashlib
 import uuid
@@ -64,7 +64,8 @@ class EnhancedTreeSitterChunker:
             '.java': 'java',
             '.kt': 'kotlin',
             '.kts': 'kotlin',
-            '.go': 'go'
+            '.scala': 'scala',
+            '.sc': 'scala'
         }
         for ext, lang_name in language_map.items():
             try:
@@ -77,47 +78,156 @@ class EnhancedTreeSitterChunker:
                 logger.warning(f"Failed to initialize parser for {lang_name}: {e}")
 
     def _initialize_queries(self):
+        """Initialize tree-sitter queries for all supported languages
+        Uses simplified, robust queries that work with actual grammar definitions
+        """
+        # Python queries
         if '.py' in self.languages:
             python_queries = {
-                'functions': '''
-                    (function_definition 
-                        name: (identifier) @func-name) @func-def
-                ''',
-                'classes': '''
-                    (class_definition 
-                        name: (identifier) @class-name) @class-def
-                ''',
-                'imports': '''
-                    [
-                        (import_statement) @import
-                        (import_from_statement) @import
-                    ]
-                ''',
-                'methods': '''
-                    (class_definition 
-                        body: (block
-                            (function_definition
-                                name: (identifier) @method-name) @method-def))
-                ''',
-                'decorators': '''
-                    (decorator) @decorator
-                ''',
-                'docstrings': '''
-                    (expression_statement
-                        (string) @docstring)
-                ''',
-                'class_with_methods': '''
-                    (class_definition
-                        name: (identifier) @class-name
-                        body: (block) @class-body) @class-def
-                '''
+                'functions': '''(function_definition name: (identifier) @func-name) @func-def''',
+                'classes': '''(class_definition name: (identifier) @class-name) @class-def''',
+                'imports': '''[(import_statement) @import (import_from_statement) @import]''',
+                'methods': '''(class_definition body: (block (function_definition name: (identifier) @method-name) @method-def))''',
+                'decorators': '''(decorator) @decorator''',
+                'docstrings': '''(expression_statement (string) @docstring)''',
+                'class_with_methods': '''(class_definition name: (identifier) @class-name body: (block) @class-body) @class-def'''
             }
             self.queries['.py'] = {}
             for name, query_text in python_queries.items():
                 try:
                     self.queries['.py'][name] = Query(self.languages['.py'], query_text)
                 except Exception as e:
-                    logger.warning(f"Failed to initialize query for {name}: {e}")
+                    logger.warning(f"Failed to initialize Python query for {name}: {e}")
+
+        # Java queries
+        if '.java' in self.languages:
+            java_queries = {
+                'classes': '''(class_declaration name: (identifier) @class-name) @class-def''',
+                'interfaces': '''(interface_declaration name: (identifier) @interface-name) @interface-def''',
+                'methods': '''(method_declaration name: (identifier) @method-name) @method-def''',
+                'imports': '''(import_declaration) @import''',
+                'package': '''(package_declaration) @package''',
+                'constructors': '''(constructor_declaration name: (identifier) @constructor-name) @constructor-def'''
+            }
+            self.queries['.java'] = {}
+            for name, query_text in java_queries.items():
+                try:
+                    self.queries['.java'][name] = Query(self.languages['.java'], query_text)
+                except Exception as e:
+                    logger.warning(f"Failed to initialize Java query for {name}: {e}")
+
+        # JavaScript/TypeScript queries
+        for ext in ['.js', '.jsx', '.ts', '.tsx']:
+            if ext in self.languages:
+                # Base JavaScript queries (work for both JS and TS)
+                js_queries = {
+                    'functions': '''(function_declaration name: (identifier) @func-name) @func-def''',
+                    'classes': '''(class_declaration name: (identifier) @class-name) @class-def''',
+                    'imports': '''(import_statement) @import''',
+                    'variables': '''(variable_declaration) @var-decl'''
+                }
+                
+                # Add TypeScript-specific queries for .ts and .tsx files
+                if ext in ['.ts', '.tsx']:
+                    ts_specific_queries = {
+                        'interfaces': '''(interface_declaration name: (type_identifier) @interface-name) @interface-def'''
+                    }
+                    js_queries.update(ts_specific_queries)
+                
+                self.queries[ext] = {}
+                for name, query_text in js_queries.items():
+                    try:
+                        self.queries[ext][name] = Query(self.languages[ext], query_text)
+                    except Exception as e:
+                        logger.warning(f"Failed to initialize {ext} query for {name}: {e}")
+
+        # Kotlin queries - using simplified, more reliable node types
+        for ext in ['.kt', '.kts']:
+            if ext in self.languages:
+                kotlin_queries = {
+                    'classes': '''(class_declaration (type_identifier) @class-name) @class-def''',
+                    'functions': '''(function_declaration (simple_identifier) @func-name) @func-def''',
+                    'imports': '''(import_header) @import'''
+                }
+                self.queries[ext] = {}
+                for name, query_text in kotlin_queries.items():
+                    try:
+                        self.queries[ext][name] = Query(self.languages[ext], query_text)
+                    except Exception as e:
+                        logger.warning(f"Failed to initialize Kotlin query for {name}: {e}")
+
+        # Scala queries - using simplified, more reliable node types  
+        for ext in ['.scala', '.sc']:
+            if ext in self.languages:
+                scala_queries = {
+                    'classes': '''(class_definition name: (identifier) @class-name) @class-def''',
+                    'functions': '''(function_definition name: (identifier) @func-name) @func-def''',
+                    'imports': '''(import_declaration) @import'''
+                }
+                self.queries[ext] = {}
+                for name, query_text in scala_queries.items():
+                    try:
+                        self.queries[ext][name] = Query(self.languages[ext], query_text)
+                    except Exception as e:
+                        logger.warning(f"Failed to initialize Scala query for {name}: {e}")
+    
+    def _validate_query(self, language, query_text: str, query_name: str) -> bool:
+        """Validate a single tree-sitter query before initializing"""
+        try:
+            Query(language, query_text)
+            return True
+        except Exception as e:
+            logger.debug(f"Query validation failed for {query_name}: {e}")
+            return False
+    
+    def get_query_stats(self) -> dict:
+        """Get statistics about initialized queries"""
+        stats = {
+            'total_parsers': len(self.parsers),
+            'total_query_sets': len(self.queries),
+            'queries_by_language': {},
+            'total_queries': 0
+        }
+        
+        for ext, query_set in self.queries.items():
+            stats['queries_by_language'][ext] = {
+                'count': len(query_set),
+                'types': list(query_set.keys())
+            }
+            stats['total_queries'] += len(query_set)
+        
+        return stats
+
+    def print_initialization_status(self):
+        """Print the status of parser and query initialization for debugging"""
+        print("\n🔧 Tree-Sitter Chunker Initialization Status")
+        print("=" * 60)
+        
+        print("\n📋 Parsers:")
+        expected_languages = ['.py', '.java', '.js', '.jsx', '.ts', '.tsx', '.kt', '.kts', '.scala', '.sc']
+        for ext in expected_languages:
+            status = "✅" if ext in self.parsers else "❌"
+            print(f"  {status} {ext}")
+        
+        print("\n📋 Queries:")
+        for ext in expected_languages:
+            if ext in self.queries:
+                query_count = len(self.queries[ext])
+                query_names = list(self.queries[ext].keys())
+                print(f"  ✅ {ext}: {query_count} queries ({', '.join(query_names)})")
+            else:
+                print(f"  ❌ {ext}: No queries")
+        
+        stats = self.get_query_stats()
+        print(f"\n📊 Summary:")
+        print(f"  Parsers: {stats['total_parsers']}")
+        print(f"  Query sets: {stats['total_query_sets']}")
+        print(f"  Total queries: {stats['total_queries']}")
+        
+        if stats['total_queries'] > 0:
+            print("✅ Initialization successful!")
+        else:
+            print("❌ No queries initialized!")
 
     def chunk_file(self, file_path: Path) -> List[CodeBaseChunk]:
         """Main entry point for chunking a file"""
@@ -172,6 +282,10 @@ class EnhancedTreeSitterChunker:
                 return self._chunk_javascript_enhanced(file_path, content, tree)
             elif ext == '.java':
                 return self._chunk_java_enhanced(file_path, content, tree)
+            elif ext in ['.kt', '.kts']:
+                return self._chunk_kotlin_enhanced(file_path, content, tree)
+            elif ext in ['.scala', '.sc']:
+                return self._chunk_scala_enhanced(file_path, content, tree)
             else:
                 return self._fallback_chunking(file_path, content)
                 
@@ -230,8 +344,7 @@ class EnhancedTreeSitterChunker:
         classes = []
         if ext in self.queries and 'class_with_methods' in self.queries[ext]:
             query = self.queries[ext]['class_with_methods']
-            cursor = QueryCursor(query)
-            captures = cursor.captures(tree.root_node)
+            captures = query.captures(tree.root_node)
             
             class_names = captures.get('class-name', [])
             class_defs = captures.get('class-def', [])
@@ -510,8 +623,13 @@ class EnhancedTreeSitterChunker:
         tree: Tree, imports: List[str]
     ) -> Optional[CodeBaseChunk]:
         """Create chunk for module-level code (globals, constants, etc.)"""
-        # This would extract module-level code that's not in functions/classes
-        # For now, returning None as a placeholder
+        ext = file_path.suffix.lower()
+        
+        if ext == '.py':
+            from rag.chunking.improved_language_support import ImprovedLanguageSupport
+            return ImprovedLanguageSupport.create_python_module_chunk(self, file_path, content, tree, imports)
+        
+        # For other languages, we could implement similar module extraction
         return None
 
     def _fallback_chunking(self, file_path: Path, content: str) -> List[CodeBaseChunk]:
@@ -545,21 +663,30 @@ class EnhancedTreeSitterChunker:
 
     def _chunk_javascript_enhanced(self, file_path: Path, content: str, tree: Tree) -> List[CodeBaseChunk]:
         """Enhanced JavaScript/TypeScript chunking"""
-        # Placeholder for JavaScript/TypeScript implementation
-        return self._fallback_chunking(file_path, content)
+        from rag.chunking.improved_language_support import ImprovedLanguageSupport
+        return ImprovedLanguageSupport.chunk_javascript_enhanced(self, file_path, content, tree)
 
     def _chunk_java_enhanced(self, file_path: Path, content: str, tree: Tree) -> List[CodeBaseChunk]:
         """Enhanced Java chunking"""
-        # Placeholder for Java implementation
-        return self._fallback_chunking(file_path, content)
+        from rag.chunking.improved_language_support import ImprovedLanguageSupport
+        return ImprovedLanguageSupport.chunk_java_enhanced(self, file_path, content, tree)
+    
+    def _chunk_kotlin_enhanced(self, file_path: Path, content: str, tree: Tree) -> List[CodeBaseChunk]:
+        """Enhanced Kotlin chunking"""
+        from rag.chunking.improved_language_support import ImprovedLanguageSupport
+        return ImprovedLanguageSupport.chunk_kotlin_enhanced(self, file_path, content, tree)
+    
+    def _chunk_scala_enhanced(self, file_path: Path, content: str, tree: Tree) -> List[CodeBaseChunk]:
+        """Enhanced Scala chunking"""
+        from rag.chunking.improved_language_support import ImprovedLanguageSupport
+        return ImprovedLanguageSupport.chunk_scala_enhanced(self, file_path, content, tree)
 
     def _extract_imports_with_query(self, tree: Tree, content: str, ext: str) -> List[str]:
         """Extract import statements"""
         imports = []
         if ext in self.queries and 'imports' in self.queries[ext]:
             query = self.queries[ext]['imports']
-            cursor = QueryCursor(query)
-            captures = cursor.captures(tree.root_node)
+            captures = query.captures(tree.root_node)
             if 'import' in captures:
                 for node in captures['import']:
                     import_text = content[node.start_byte:node.end_byte]
@@ -571,8 +698,7 @@ class EnhancedTreeSitterChunker:
         functions = []
         if ext in self.queries and 'functions' in self.queries[ext]:
             query = self.queries[ext]['functions']
-            cursor = QueryCursor(query)
-            captures = cursor.captures(tree.root_node)
+            captures = query.captures(tree.root_node)
             
             func_names = captures.get('func-name', [])
             func_defs = captures.get('func-def', [])
@@ -588,8 +714,7 @@ class EnhancedTreeSitterChunker:
         classes = []
         if ext in self.queries and 'classes' in self.queries[ext]:
             query = self.queries[ext]['classes']
-            cursor = QueryCursor(query)
-            captures = cursor.captures(tree.root_node)
+            captures = query.captures(tree.root_node)
             
             class_names = captures.get('class-name', [])
             class_defs = captures.get('class-def', [])
@@ -640,12 +765,48 @@ class EnhancedTreeSitterChunker:
         
         return True
 
+    def _derive_project_info(self, file_paths: List[Path]) -> str:
+        """Derive project information from file paths"""
+        if not file_paths:
+            return ""
+        
+        # Find the common ancestor directory (project root)
+        first_path = file_paths[0]
+        common_parent = first_path.parent
+        
+        # Find deepest common parent for all files
+        for path in file_paths[1:]:
+            # Find common path between current common_parent and this file's parent
+            try:
+                common_parent = Path(*common_parent.parts[:
+                    len([i for i, j in zip(common_parent.parts, path.parent.parts) if i == j])
+                ])
+            except (IndexError, ValueError):
+                # If no common parts, use the first file's parent as fallback
+                common_parent = first_path.parent
+                break
+        
+        project_path = str(common_parent)
+        
+        logger.debug(f"Derived project path: {project_path}")
+        return project_path
+
     def chunk_files_parallel(self, file_paths: List[Path]) -> List[CodeBaseChunk]:
         """Chunk multiple files in parallel"""
+        if not file_paths:
+            return []
+            
+        # Derive project information from file paths
+        project_path = self._derive_project_info(file_paths)
+        
         if len(file_paths) < 2:
             chunks = []
             for path in file_paths:
-                chunks.extend(self.chunk_file(path))
+                file_chunks = self.chunk_file(path)
+                # Add project context to each chunk
+                for chunk in file_chunks:
+                    chunk.project_path = project_path
+                chunks.extend(file_chunks)
             return chunks
 
         all_chunks = []
@@ -655,6 +816,9 @@ class EnhancedTreeSitterChunker:
                 path = future_to_path[future]
                 try:
                     chunks = future.result()
+                    # Add project context to each chunk
+                    for chunk in chunks:
+                        chunk.project_path = project_path
                     all_chunks.extend(chunks)
                 except Exception as e:
                     logger.error(f"Error chunking file {path}: {e}")

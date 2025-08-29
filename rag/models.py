@@ -19,7 +19,7 @@ class ChatResponse(BaseModel):
 
 class IndexCodeBaseRequest(BaseModel):
     project_path: str
-    file_patterns: Optional[List[str]]
+    file_patterns: Optional[List[str]] = None
     force_reindex: bool = False
 
 class IndexCodeBaseResponse(BaseModel):
@@ -33,6 +33,7 @@ class IndexCodeBaseResponse(BaseModel):
 class CodeBaseChunk(BaseModel):
     id: str
     file_path: str
+    project_path: str = ""  # Absolute path to project root
     content: str
     language: str
     chunk_type: str # this will function, class, module, import etc.
@@ -50,6 +51,7 @@ class CodeBaseChunk(BaseModel):
             "vector": self.embedding,
             "payload": {
                 "file_path": self.file_path,
+                "project_path": self.project_path,
                 "content": self.content,
                 "language": self.language,
                 "chunk_type": self.chunk_type,
@@ -62,6 +64,7 @@ class CodeBaseChunk(BaseModel):
 
 class QueryRequest(BaseModel):
     query: str
+    project_path: Optional[str] = None
     max_context_tokens: int = 8000
     top_k: int = 10
     include_metadata: bool = False

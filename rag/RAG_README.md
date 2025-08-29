@@ -47,6 +47,11 @@ graph TB
 
 
 
+1. Context Window
+2. Postgres Implement
+3. 
+
+
 Using Qdrant as Vector Database and for sematic search
 Why Qdrant?
 1. Open Source and Cloud Both (minimal charges), self hosted

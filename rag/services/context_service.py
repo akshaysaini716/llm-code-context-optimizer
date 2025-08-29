@@ -9,7 +9,7 @@ class ContextService:
 
     def get_relevant_context(self, request: ChatRequest) -> str:
         if request.relevant_only:
-            return self.rag_system.query(request.message).context
+            return self.rag_system.query(request.message, project_path=request.project_path).context
         else:
             return self.get_all_code_files(request.project_path)
 

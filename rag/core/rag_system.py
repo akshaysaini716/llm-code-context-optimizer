@@ -11,7 +11,9 @@ from rag.embedding.enhanced_embedder import EnhancedCodeEmbedder
 from rag.models import RAGResponse
 from rag.retrieval.context_fusion import ContextFusion
 from rag.retrieval.enhanced_context_fusion import EnhancedContextFusion
+from rag.retrieval.enhanced_multi_stage_retriever import EnhancedMultiStageRetriever
 from rag.retrieval.enhanced_retriever import EnhancedContextRetriever
+from rag.retrieval.multi_stage_retriever import MultiStageRetriever
 from rag.retrieval.retriever import ContextRetriever
 from rag.vector_store.qdrant_client_impl import QdrantClientImpl
 
@@ -26,13 +28,14 @@ class RAGSystem:
         self.embedder = EnhancedCodeEmbedder()
         self.qdrant_client = QdrantClientImpl()
         self.retriever = EnhancedContextRetriever()
+        self.multi_stage_retriever = MultiStageRetriever()
         self.context_fuser = EnhancedContextFusion()
 
     # TODO: force_reindex implementation
     def index_codebase(self, project_path, file_patterns, force_reindex) -> Dict[str, Any]:
         start_time = time.time()
         project_path = Path(project_path)
-        file_patterns = file_patterns or ["*.py", "*.js", "*.ts", "*.java", "*.kt", "*.go"]
+        file_patterns = file_patterns or ["*.py", "*.js", "*.ts", "*.java", "*.kt", "*.go", "*.scala"]
         all_files = []
         for pattern in file_patterns:
             files = list(project_path.rglob(pattern))
@@ -66,12 +69,13 @@ class RAGSystem:
             "collection_info": self.qdrant_client.get_collection_info()
         }
 
-    def query(self, query: str, max_context_tokens: int = 8000, top_k: int = 10) -> RAGResponse:
+    def query(self, query: str, project_path: Optional[str] = None, max_context_tokens: int = 8000, top_k: int = 10) -> RAGResponse:
         start_time = time.time()
         logger.info(f"Process Query Retrieval for query: {query}")
         try:
             # TODO: Implement cache
-            retrieval_result = self.retriever.retrieve_with_context(query, top_k*2) # get more for reranking
+            # retrieval_result = self.retriever.retrieve_with_context(query, top_k*2) # get more for reranking
+            retrieval_result = self.multi_stage_retriever.retrieve(query, top_k, project_path)
             if not retrieval_result:
                 return RAGResponse(
                     context="",

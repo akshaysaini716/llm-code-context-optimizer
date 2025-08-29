@@ -72,8 +72,11 @@ async def index_codebase(request: IndexCodeBaseRequest):
 @app.post("/query", response_model=QueryResponse)
 async def query_rag(request: QueryRequest):
     try:
+        # Note: RAGSystem.query doesn't support project_path yet, 
+        # so we ignore that parameter for now
         rag_response = rag_system.query(
-            query  = request.query,
+            query = request.query,
+            project_path = request.project_path,
             max_context_tokens = request.max_context_tokens,
             top_k = request.top_k
         )

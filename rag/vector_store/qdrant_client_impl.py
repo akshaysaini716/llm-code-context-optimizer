@@ -84,22 +84,19 @@ class QdrantClientImpl:
             logger.error(f"Failed to get collection info: {e}")
             return {}
 
-    def search_similar(self, query_vector: List[float], filters: Optional[Dict[str, Any]] = None, top_k: int = 10) -> List[RetrievalResult]:
+    def search_similar(self, query_vector: List[float], project_path: Optional[str] = None, filters: Optional[Dict[str, Any]] = None, top_k: int = 10) -> List[RetrievalResult]:
         try:
-            qdrant_filter = None
-            if filters:
-                # This is a simplified filter conversion - expand as needed
-                filter_conditions = []
-                for key, value in filters.items():
-                    filter_conditions.append(
-                        FieldCondition(key=key, match=Match(value=value))
-                    )
-                if filter_conditions:
-                    qdrant_filter = Filter(must=filter_conditions)
+            # For now, disable filtering to avoid typing.Union issues 
+            # and use manual filtering instead
+            if project_path or filters:
+                logger.debug("Using fallback search without Qdrant filters due to typing issues")
+                return self._search_with_manual_filtering(query_vector, project_path, filters, top_k)
+            
+            # Perform search without filters
             search_result = self.client.search(
                 collection_name="code_chunks",
                 query_vector=query_vector,
-                query_filter=qdrant_filter,
+                query_filter=None,  # No filters for now
                 limit=top_k,
                 with_payload=True,
                 with_vectors=False
@@ -116,6 +113,54 @@ class QdrantClientImpl:
             return results
         except Exception as e:
             logger.error(f"Failed to search result: {e}")
+            return []
+
+    def _search_with_manual_filtering(self, query_vector: List[float], project_path: Optional[str] = None, filters: Optional[Dict[str, Any]] = None, top_k: int = 10) -> List[RetrievalResult]:
+        """Search with manual filtering to avoid Qdrant filter typing issues"""
+        try:
+            # Get more results than needed, then filter manually
+            search_result = self.client.search(
+                collection_name="code_chunks",
+                query_vector=query_vector,
+                query_filter=None,  # No Qdrant filters
+                limit=top_k * 3,  # Get 3x more to account for filtering
+                with_payload=True,
+                with_vectors=False
+            )
+            
+            results = []
+            for scored_point in search_result:
+                chunk = self._point_to_chunk(scored_point)
+                if chunk:
+                    # Apply manual filters
+                    if project_path and chunk.project_path != project_path:
+                        continue
+                    
+                    # Apply additional filters if provided
+                    if filters:
+                        matches = True
+                        for key, value in filters.items():
+                            chunk_value = getattr(chunk, key, None)
+                            if chunk_value != value:
+                                matches = False
+                                break
+                        if not matches:
+                            continue
+                    
+                    result = RetrievalResult(
+                        chunk=chunk,
+                        relevance_score=scored_point.score
+                    )
+                    results.append(result)
+                    
+                    # Stop when we have enough results
+                    if len(results) >= top_k:
+                        break
+            
+            return results[:top_k]
+            
+        except Exception as e:
+            logger.error(f"Failed manual search with filtering: {e}")
             return []
 
     def search_by_filter(self, filters: Dict[str, Any], limit: int = 10) -> List[CodeBaseChunk]:
@@ -185,36 +230,57 @@ class QdrantClientImpl:
     def _point_to_chunk(self, scored_point) -> Optional[CodeBaseChunk]:
         try:
             payload = scored_point.payload
+            
+            # Debug: log the payload structure to understand what we're getting
+            logger.debug(f"Payload keys: {list(payload.keys()) if payload else 'None'}")
+            
+            # Ensure all values are of the correct type
+            project_path = payload.get("project_path", "") if payload else ""
+            if project_path is None:
+                project_path = ""
+                
             return CodeBaseChunk(
                 id = str(scored_point.id),
-                file_path = payload.get("file_path", ""),
-                content=payload.get("content", ""),
-                language=payload.get("language", ""),
-                chunk_type=payload.get("chunk_type", ""),
-                start_byte=payload.get("start_byte", 0),
-                end_byte=payload.get("end_byte", 0),
-                start_line=payload.get("start_line", 0),
-                end_line=payload.get("end_line", 0)
+                file_path = str(payload.get("file_path", "")) if payload else "",
+                project_path = str(project_path),
+                content=str(payload.get("content", "")) if payload else "",
+                language=str(payload.get("language", "")) if payload else "",
+                chunk_type=str(payload.get("chunk_type", "")) if payload else "",
+                start_byte=int(payload.get("start_byte", 0)) if payload else 0,
+                end_byte=int(payload.get("end_byte", 0)) if payload else 0,
+                start_line=int(payload.get("start_line", 0)) if payload else 0,
+                end_line=int(payload.get("end_line", 0)) if payload else 0
             )
         except Exception as e:
             logger.error(f"Failed to convert point to chunk: {e}")
+            logger.error(f"Payload: {payload}")
+            logger.error(f"Point ID: {scored_point.id}")
             return None
 
     def _point_to_chunk_from_record(self, record) -> Optional[CodeBaseChunk]:
         """Convert a record from scroll results to CodeBaseChunk"""
         try:
             payload = record.payload
+            
+            # Ensure all values are of the correct type
+            project_path = payload.get("project_path", "") if payload else ""
+            if project_path is None:
+                project_path = ""
+                
             return CodeBaseChunk(
                 id = str(record.id),
-                file_path = payload.get("file_path", ""),
-                content=payload.get("content", ""),
-                language=payload.get("language", ""),
-                chunk_type=payload.get("chunk_type", ""),
-                start_byte=payload.get("start_byte", 0),
-                end_byte=payload.get("end_byte", 0),
-                start_line=payload.get("start_line", 0),
-                end_line=payload.get("end_line", 0)
+                file_path = str(payload.get("file_path", "")) if payload else "",
+                project_path = str(project_path),
+                content=str(payload.get("content", "")) if payload else "",
+                language=str(payload.get("language", "")) if payload else "",
+                chunk_type=str(payload.get("chunk_type", "")) if payload else "",
+                start_byte=int(payload.get("start_byte", 0)) if payload else 0,
+                end_byte=int(payload.get("end_byte", 0)) if payload else 0,
+                start_line=int(payload.get("start_line", 0)) if payload else 0,
+                end_line=int(payload.get("end_line", 0)) if payload else 0
             )
         except Exception as e:
             logger.error(f"Failed to convert record to chunk: {e}")
+            logger.error(f"Payload: {payload}")
+            logger.error(f"Record ID: {record.id}")
             return None
