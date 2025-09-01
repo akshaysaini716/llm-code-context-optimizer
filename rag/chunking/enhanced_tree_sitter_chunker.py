@@ -791,13 +791,17 @@ class EnhancedTreeSitterChunker:
         logger.debug(f"Derived project path: {project_path}")
         return project_path
 
-    def chunk_files_parallel(self, file_paths: List[Path]) -> List[CodeBaseChunk]:
+    def chunk_files_parallel(self, file_paths: List[Path], project_path: Optional[str] = None) -> List[CodeBaseChunk]:
         """Chunk multiple files in parallel"""
         if not file_paths:
             return []
             
-        # Derive project information from file paths
-        project_path = self._derive_project_info(file_paths)
+        # Use provided project path, or derive from file paths as fallback
+        if project_path:
+            logger.debug(f"Using provided project path: {project_path}")
+        else:
+            project_path = self._derive_project_info(file_paths)
+            logger.debug(f"Derived project path: {project_path}")
         
         if len(file_paths) < 2:
             chunks = []

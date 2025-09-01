@@ -42,14 +42,22 @@ class RAGSystem:
             all_files.extend(files)
         logger.info(f"Found {len(all_files)} code files to index")
 
-        # Chunking the code files
-        all_chunks = self.chunker.chunk_files_parallel(all_files)
+        # Chunking the code files with original project path
+        all_chunks = self.chunker.chunk_files_parallel(all_files, str(project_path))
         logger.info(f"Generated {len(all_chunks)} chunks")
 
         # Creating the embeddings
-        chunks_with_embeddings = self.embedder.embed_chunks(all_chunks)
+        chunk_relationships = self.chunker.chunk_relationships
+        chunks_with_embeddings = self.embedder.embed_chunks(all_chunks, chunk_relationships=chunk_relationships)
         embedded_count = sum(1 for chunk in chunks_with_embeddings if chunk.embedding)
         logger.info(f"Created embeddings for {embedded_count}/{len(all_chunks)} chunks")
+        logger.info(f"Chunk relationships: {len(chunk_relationships)}")
+        relationship_stats = {
+            "chunks_with_parents": sum(1 for rel in chunk_relationships.values() if rel.parent_id),
+            "chunks_with_siblings": sum(1 for rel in chunk_relationships.values() if rel.sibling_ids),
+            "chunks_with_overlaps": sum(1 for rel in chunk_relationships.values() if rel.overlaps_with)
+        }
+        logger.info(f"Relationship stats: {relationship_stats}")
 
         # Store the embeddings in vector DB, Qdrant here
         success = self.qdrant_client.upsert_chunks(chunks_with_embeddings)

@@ -1,4 +1,5 @@
 import logging
+from pathlib import Path
 from typing import List, Dict, Any, Optional
 
 from qdrant_client import QdrantClient
@@ -115,6 +116,19 @@ class QdrantClientImpl:
             logger.error(f"Failed to search result: {e}")
             return []
 
+    def _is_project_path_match(self, chunk_project: str, query_project: str) -> bool:
+        """Simplified project path matching for backward compatibility"""
+        if not chunk_project or not query_project:
+            return True  # Allow if either is missing
+        
+        # Quick exact match
+        if chunk_project == query_project:
+            return True
+        
+        # Simple fallback for existing data with derived paths
+        # Check if one path contains the other (handles /management vs /management/src)
+        return (query_project in chunk_project or chunk_project in query_project)
+
     def _search_with_manual_filtering(self, query_vector: List[float], project_path: Optional[str] = None, filters: Optional[Dict[str, Any]] = None, top_k: int = 10) -> List[RetrievalResult]:
         """Search with manual filtering to avoid Qdrant filter typing issues"""
         try:
@@ -133,7 +147,7 @@ class QdrantClientImpl:
                 chunk = self._point_to_chunk(scored_point)
                 if chunk:
                     # Apply manual filters
-                    if project_path and chunk.project_path != project_path:
+                    if project_path and not self._is_project_path_match(chunk.project_path, project_path):
                         continue
                     
                     # Apply additional filters if provided
