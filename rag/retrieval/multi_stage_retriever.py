@@ -11,7 +11,8 @@ from enum import Enum
 
 from rag.models import RetrievalResult, CodeBaseChunk
 from rag.retrieval.enhanced_retriever import EnhancedContextRetriever
-from rag.vector_store.qdrant_client_impl import QdrantClientImpl
+from rag.vector_store.vector_store_factory import get_vector_store
+from rag.configs import VectorStoreConfig
 
 logger = logging.getLogger(__name__)
 
@@ -45,9 +46,9 @@ class MultiStageRetriever:
     Stage 5: Result Fusion & Ranking - combine and rank all results
     """
     
-    def __init__(self):
-        self.enhanced_retriever = EnhancedContextRetriever()
-        self.qdrant_client = QdrantClientImpl()
+    def __init__(self, vector_store_config: Optional[VectorStoreConfig] = None):
+        self.enhanced_retriever = EnhancedContextRetriever(vector_store_config=vector_store_config)
+        self.vector_store = get_vector_store(vector_store_config)
         
         # Pre-compiled patterns for efficiency
         self.symbol_patterns = [
@@ -276,6 +277,7 @@ class MultiStageRetriever:
     def _fuse_results(self, all_results: List[RetrievalResult]) -> List[RetrievalResult]:
         """Deduplicate and fuse results from different stages"""
         seen_chunks = {}
+        chunk_discovery_counts = {}  # Track how many times each chunk was found
         fused_results = []
         
         for result in all_results:
@@ -284,15 +286,26 @@ class MultiStageRetriever:
             if chunk_id not in seen_chunks:
                 # First time seeing this chunk
                 seen_chunks[chunk_id] = result
+                chunk_discovery_counts[chunk_id] = 1
                 fused_results.append(result)
             else:
-                # Seen before - boost score if found via multiple methods
+                # Seen before - combine scores intelligently
                 existing_result = seen_chunks[chunk_id]
-                existing_result.relevance_score = max(
-                    existing_result.relevance_score, 
-                    result.relevance_score
-                ) * 1.1  # Small boost for multiple matches
+                chunk_discovery_counts[chunk_id] += 1
+                
+                # Use weighted average of scores with boost for multiple discoveries
+                current_score = existing_result.relevance_score
+                new_score = result.relevance_score
+                
+                # Weighted combination favoring higher scores
+                combined_score = (current_score + new_score) / 2
+                
+                # Apply multi-discovery boost (more discoveries = higher relevance)
+                discovery_boost = 1.0 + (chunk_discovery_counts[chunk_id] - 1) * 0.15
+                existing_result.relevance_score = combined_score * discovery_boost
         
+        # Sort by final scores
+        fused_results.sort(key=lambda x: x.relevance_score, reverse=True)
         return fused_results
     
     def _rerank_for_query_type(self, results: List[RetrievalResult], analysis: QueryAnalysis) -> List[RetrievalResult]:

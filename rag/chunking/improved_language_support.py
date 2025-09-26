@@ -320,7 +320,7 @@ class ImprovedLanguageSupport:
         if token_count < 50:  # Skip if too small
             return None
         
-        chunk_id = chunker_instance._generate_chunk_id(file_path, "module", "module")
+        chunk_id = chunker_instance._generate_chunk_id(file_path, "module", "module", 0, len(full_module_content))
         
         return CodeBaseChunk(
             id=chunk_id,
@@ -864,7 +864,7 @@ class ImprovedLanguageSupport:
         
         full_content = '\n'.join(content_parts)
         
-        chunk_id = chunker_instance._generate_chunk_id(file_path, class_name, "class")
+        chunk_id = chunker_instance._generate_chunk_id(file_path, class_name, "class", class_node.start_byte, class_node.end_byte)
         
         return CodeBaseChunk(
             id=chunk_id,
@@ -1030,7 +1030,7 @@ class ImprovedLanguageSupport:
         
         full_content = '\n'.join(content_parts)
         
-        chunk_id = chunker_instance._generate_chunk_id(file_path, class_name, "class")
+        chunk_id = chunker_instance._generate_chunk_id(file_path, class_name, "class", class_node.start_byte, class_node.end_byte)
         
         return CodeBaseChunk(
             id=chunk_id,
@@ -1190,7 +1190,7 @@ class ImprovedLanguageSupport:
         
         full_content = f"{imports}\n\n{node_content}" if imports else node_content
         
-        chunk_id = chunker_instance._generate_chunk_id(file_path, symbol_name, node.type)
+        chunk_id = chunker_instance._generate_chunk_id(file_path, symbol_name, node.type, node.start_byte, node.end_byte)
         
         return CodeBaseChunk(
             id=chunk_id,
@@ -1229,7 +1229,7 @@ class ImprovedLanguageSupport:
         
         full_content = f"{relevant_imports}\n\n{class_content}" if relevant_imports else class_content
         
-        chunk_id = chunker_instance._generate_chunk_id(file_path, class_name, "class")
+        chunk_id = chunker_instance._generate_chunk_id(file_path, class_name, "class", class_node.start_byte, class_node.end_byte)
         
         return CodeBaseChunk(
             id=chunk_id,
@@ -1271,7 +1271,7 @@ class ImprovedLanguageSupport:
         
         full_content = '\n'.join(content_parts)
         
-        chunk_id = chunker_instance._generate_chunk_id(file_path, class_name, "class")
+        chunk_id = chunker_instance._generate_chunk_id(file_path, class_name, "class", class_node.start_byte, class_node.end_byte)
         
         return CodeBaseChunk(
             id=chunk_id,
@@ -1324,7 +1324,7 @@ class ImprovedLanguageSupport:
         else:
             full_content = module_content
         
-        chunk_id = chunker_instance._generate_chunk_id(file_path, "module", "module")
+        chunk_id = chunker_instance._generate_chunk_id(file_path, "module", "module", 0, len(full_content))
         
         return CodeBaseChunk(
             id=chunk_id,

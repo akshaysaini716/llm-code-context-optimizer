@@ -6,7 +6,22 @@ uvicorn rag.api.rag_server:app --reload
 1. Single File Update in Vector DB
 2. Summarize the large files
 3. Single File Codebase index
-4. 
+4. Slidling Window Context Fusion 
+5. Context Boosting - implemented recent edit files, open files, etc need to test.
+6. 
+
+
+Chunking:
+1. Smart chunks, class methods with class context
+2. overlap chunks
+3. Context Preservation - including imports, parent-child relationship
+
+Retrival:
+1. Query Analysis - def, buh, error, implementation, etc
+2. Exact sysmbol match
+3. Semantic Search
+4. Context Expansion - using session awareness
+5. 
 
 
 

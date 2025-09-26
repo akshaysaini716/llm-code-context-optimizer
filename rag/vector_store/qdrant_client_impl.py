@@ -13,10 +13,11 @@ except ImportError:
     # Fallback for different qdrant versions
     Range = None
 from rag.models import CodeBaseChunk, RetrievalResult
+from rag.vector_store.base_vector_store import VectorStore
 
 logger = logging.getLogger(__name__)
 
-class QdrantClientImpl:
+class QdrantClientImpl(VectorStore):
     def __init__(self):
         self.client = QdrantClient(
             host="localhost",
@@ -298,3 +299,64 @@ class QdrantClientImpl:
             logger.error(f"Payload: {payload}")
             logger.error(f"Record ID: {record.id}")
             return None
+
+    def delete_chunks(self, chunk_ids: List[str]) -> bool:
+        """Delete chunks by their IDs"""
+        try:
+            self.client.delete(
+                collection_name=self.collection_name,
+                points_selector=chunk_ids
+            )
+            return True
+        except Exception as e:
+            logger.error(f"Failed to delete chunks: {e}")
+            return False
+
+    def delete_chunks_by_project_path(self, project_path: str) -> bool:
+        """Delete all chunks for a specific project path"""
+        try:
+            self.client.delete(
+                collection_name=self.collection_name,
+                points_selector=Filter(
+                    must=[
+                        FieldCondition(
+                            key="project_path",
+                            match=Match(value=project_path)
+                        )
+                    ]
+                )
+            )
+            logger.info(f"Deleted chunks for project path: {project_path}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to delete chunks by project path: {e}")
+            return False
+
+    def clear_collection(self) -> bool:
+        """Clear all data from the collection"""
+        try:
+            # Delete and recreate collection
+            self.client.delete_collection(self.collection_name)
+            self._ensure_collection()
+            return True
+        except Exception as e:
+            logger.error(f"Failed to clear collection: {e}")
+            return False
+
+    def health_check(self) -> Dict[str, Any]:
+        """Check the health status of Qdrant"""
+        try:
+            # Try to get collection info as a health check
+            info = self.get_collection_info()
+            return {
+                "status": "healthy",
+                "provider": "qdrant",
+                "collection_exists": bool(info),
+                "total_points": info.get("total_points", 0)
+            }
+        except Exception as e:
+            return {
+                "status": "unhealthy",
+                "provider": "qdrant",
+                "error": str(e)
+            }

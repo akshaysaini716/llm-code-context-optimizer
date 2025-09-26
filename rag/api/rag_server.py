@@ -78,7 +78,11 @@ async def query_rag(request: QueryRequest):
             query = request.query,
             project_path = request.project_path,
             max_context_tokens = request.max_context_tokens,
-            top_k = request.top_k
+            top_k = request.top_k,
+            expand_window = request.expand_window,
+            expansion_level = request.expansion_level,
+            previous_chunk_ids = request.previous_chunk_ids,
+            session_id = request.session_id
         )
 
         response = QueryResponse(

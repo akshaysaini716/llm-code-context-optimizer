@@ -24,7 +24,7 @@ class FileHandler:
         """Save calculation history to file"""
         try:
             data = {
-                "history": history2,
+                "history": history520,
                 "saved_at": datetime.now().isoformat(),
                 "total_calculations": len(history)
             }

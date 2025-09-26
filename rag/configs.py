@@ -115,19 +115,14 @@ class FusionConfig:
     separator_style: str = "=" * 50
 
 @dataclass
-class VectorStoreConfig:
-    """Configuration for vector store (Qdrant)"""
-    collection_name: str = "code_chunks"
-    embedding_dimension: int = 768  # For all-mpnet-base-v2
-    
-    # Qdrant settings
+class QdrantConfig:
+    """Configuration specific to Qdrant"""
     host: str = "localhost"
     port: int = 6333
     https: bool = False
     api_key: Optional[str] = None
     
     # Collection settings
-    distance_metric: str = "Cosine"  # Cosine, Euclid, Dot
     index_threshold: int = 10000
     on_disk_payload: bool = True
     
@@ -137,6 +132,43 @@ class VectorStoreConfig:
         "hnsw_ef": 128,
         "indexed_only": True
     })
+
+@dataclass
+class PostgreSQLConfig:
+    """Configuration specific to PostgreSQL with pgvector"""
+    host: str = "localhost"
+    port: int = 5432
+    database: str = "rag_db"
+    username: str = "rag_user"
+    password: str = "rag_password"
+    
+    # Connection settings
+    max_connections: int = 20
+    connection_timeout: int = 30
+    
+    # Table settings
+    table_name: str = "code_chunks"
+    enable_ivfflat_index: bool = True
+    ivfflat_lists: int = 100
+    
+    # Performance settings
+    maintenance_work_mem: str = "256MB"
+    effective_cache_size: str = "1GB"
+
+@dataclass
+class VectorStoreConfig:
+    """Configuration for vector store"""
+    # Database type selection
+    provider: str = "postgresql"  # "qdrant" or "postgresql"
+    
+    # Common settings
+    collection_name: str = "code_chunks"
+    embedding_dimension: int = 768  # For all-mpnet-base-v2
+    distance_metric: str = "cosine"  # cosine, euclidean, dot_product
+    
+    # Provider-specific configs
+    qdrant: QdrantConfig = field(default_factory=QdrantConfig)
+    postgresql: PostgreSQLConfig = field(default_factory=PostgreSQLConfig)
 
 @dataclass
 class EmbeddingConfig:
@@ -279,7 +311,7 @@ CONFIGS = {
             enable_context_expansion=False
         ),
         vector_store=VectorStoreConfig(
-            on_disk_payload=True
+            qdrant=QdrantConfig(on_disk_payload=True)
         )
     ),
     "high_accuracy": RAGConfig(

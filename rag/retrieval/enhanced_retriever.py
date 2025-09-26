@@ -7,15 +7,16 @@ from rag.configs import EmbeddingConfig
 from rag.embedding.embedder import CodeEmbedder
 from rag.embedding.enhanced_embedder import EnhancedCodeEmbedder
 from rag.models import RetrievalResult, CodeBaseChunk
-from rag.vector_store.qdrant_client_impl import QdrantClientImpl
+from rag.vector_store.vector_store_factory import get_vector_store
+from rag.configs import VectorStoreConfig
 
 logger = logging.getLogger(__name__)
 
 class EnhancedContextRetriever:
     """Enhanced retriever with sliding window context expansion and relationship-aware retrieval"""
     
-    def __init__(self, enable_context_expansion: bool = True, expansion_window: int = 300):
-        self.qdrant_client = QdrantClientImpl()
+    def __init__(self, enable_context_expansion: bool = True, expansion_window: int = 300, vector_store_config: Optional[VectorStoreConfig] = None):
+        self.vector_store = get_vector_store(vector_store_config)
         config = EmbeddingConfig(include_file_context=True)
         self.embedder = EnhancedCodeEmbedder(config)
         self.tokenizer = tiktoken.get_encoding("cl100k_base")
@@ -46,7 +47,7 @@ class EnhancedContextRetriever:
             if not query_embedding:
                 return []
 
-            initial_results = self.qdrant_client.search_similar(
+            initial_results = self.vector_store.search_similar(
                 query_vector=query_embedding,
                 project_path=project_path,
                 filters=None,
@@ -119,17 +120,41 @@ class EnhancedContextRetriever:
         """Fetch chunks related to the given chunk"""
         related = []
         
-        # Simplified approach to avoid Qdrant filtering issues
-        # We'll use vector similarity search with file-based filtering instead
+        # Simplified approach using file-based search to avoid Qdrant filtering issues
         try:
             # Skip related chunk fetching for complete classes as they already contain everything
             if chunk.chunk_type == "class_complete":
                 return related
             
-            # For now, disable related chunk fetching to avoid the Qdrant issues
-            # This can be re-enabled once the Qdrant client issues are resolved
-            logger.debug(f"Skipping related chunk fetching for {chunk.id} due to Qdrant filtering issues")
-            return related
+            # Use simple file-based search for related chunks
+            # This is a simplified approach but more reliable than complex filtering
+            file_chunks = self.vector_store.search_by_filter(
+                filters={"file_path": chunk.file_path}, 
+                limit=20
+            )
+            
+            for file_chunk in file_chunks:
+                if file_chunk.id == chunk.id:
+                    continue
+                
+                # Check for parent-child relationships
+                if (file_chunk.chunk_type == "class_complete" and
+                    file_chunk.start_line <= chunk.start_line and
+                    file_chunk.end_line >= chunk.end_line):
+                    related.append((file_chunk, "parent"))
+                
+                # Check for sibling relationships (same file, similar line range)
+                elif (abs(file_chunk.start_line - chunk.start_line) < 50 and
+                      file_chunk.chunk_type == chunk.chunk_type):
+                    related.append((file_chunk, "sibling"))
+                
+                # Check for overlapping chunks
+                elif (file_chunk.start_line <= chunk.end_line and
+                      file_chunk.end_line >= chunk.start_line):
+                    related.append((file_chunk, "overlap"))
+            
+            logger.debug(f"Found {len(related)} related chunks for {chunk.id}")
+            return related[:5]  # Limit to 5 most relevant
             
         except Exception as e:
             logger.warning(f"Error fetching related chunks: {e}")

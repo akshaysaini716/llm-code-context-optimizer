@@ -5,13 +5,14 @@ import tiktoken
 
 from rag.embedding.embedder import CodeEmbedder
 from rag.models import RAGResponse, RetrievalResult
-from rag.vector_store.qdrant_client_impl import QdrantClientImpl
+from rag.vector_store.vector_store_factory import get_vector_store
+from rag.configs import VectorStoreConfig
 
 logger = logging.getLogger(__name__)
 
 class ContextRetriever:
-    def __init__(self):
-        self.qdrant_client = QdrantClientImpl()
+    def __init__(self, vector_store_config: Optional[VectorStoreConfig] = None):
+        self.vector_store = get_vector_store(vector_store_config)
         self.embedder = CodeEmbedder()
         self.tokenizer = tiktoken.get_encoding("cl100k_base")
 
@@ -22,7 +23,7 @@ class ContextRetriever:
                 return []
 
             filters = None
-            results = self.qdrant_client.search_similar(
+            results = self.vector_store.search_similar(
                 query_vector=query_embedding,
                 filters = filters,
                 top_k=top_k

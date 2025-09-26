@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from rag.configs import ChunkingConfig
 from rag.models import CodeBaseChunk
 from tree_sitter_language_pack import get_language, get_parser
-from tree_sitter import Parser, Node, Tree, Query
+from tree_sitter import Parser, Node, Tree, Query, QueryCursor
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import hashlib
 import uuid
@@ -344,7 +344,8 @@ class EnhancedTreeSitterChunker:
         classes = []
         if ext in self.queries and 'class_with_methods' in self.queries[ext]:
             query = self.queries[ext]['class_with_methods']
-            captures = query.captures(tree.root_node)
+            cursor = QueryCursor(query)
+            captures = cursor.captures(tree.root_node)
             
             class_names = captures.get('class-name', [])
             class_defs = captures.get('class-def', [])
@@ -424,7 +425,7 @@ class EnhancedTreeSitterChunker:
         else:
             full_content = class_content
         
-        chunk_id = self._generate_chunk_id(file_path, class_name, "class")
+        chunk_id = self._generate_chunk_id(file_path, class_name, "class", class_node.start_byte, class_node.end_byte)
         
         return CodeBaseChunk(
             id=chunk_id,
@@ -465,7 +466,10 @@ class EnhancedTreeSitterChunker:
                 overlap_content = '\n'.join(lines[overlap_start_line - 1:overlap_end_line])
                 
                 # Create overlap chunk
-                overlap_chunk_id = self._generate_chunk_id(file_path, f"overlap_{i}", "overlap")
+                # Use line positions as byte approximation for overlap chunks  
+                overlap_start_byte = overlap_start_line * 50  # Rough estimate
+                overlap_end_byte = overlap_end_line * 50
+                overlap_chunk_id = self._generate_chunk_id(file_path, f"overlap_{i}_{overlap_start_line}_{overlap_end_line}", "overlap", overlap_start_byte, overlap_end_byte)
                 overlap_chunk = CodeBaseChunk(
                     id=overlap_chunk_id,
                     file_path=str(file_path),
@@ -613,9 +617,10 @@ class EnhancedTreeSitterChunker:
         
         return '\n'.join(context_content)
 
-    def _generate_chunk_id(self, file_path: Path, identifier: str, chunk_type: str) -> str:
+    def _generate_chunk_id(self, file_path: Path, identifier: str, chunk_type: str, start_byte: int = 0, end_byte: int = 0) -> str:
         """Generate unique chunk ID"""
-        unique_str = f"{file_path}_{identifier}_{chunk_type}"
+        # Include byte positions for uniqueness to avoid duplicates
+        unique_str = f"{file_path}_{identifier}_{chunk_type}_{start_byte}_{end_byte}"
         return hashlib.md5(unique_str.encode()).hexdigest()
 
     def _create_module_chunk(
@@ -645,7 +650,10 @@ class EnhancedTreeSitterChunker:
             chunk_lines = lines[i:i + chunk_size]
             chunk_content = '\n'.join(chunk_lines)
             
-            chunk_id = self._generate_chunk_id(file_path, f"fallback_{i}", "text")
+            # Calculate approximate byte positions for fallback chunks
+            start_line_pos = sum(len(lines[j]) + 1 for j in range(i)) if i > 0 else 0
+            end_line_pos = start_line_pos + len(chunk_content)
+            chunk_id = self._generate_chunk_id(file_path, f"fallback_{i}", "text", start_line_pos, end_line_pos)
             chunk = CodeBaseChunk(
                 id=chunk_id,
                 file_path=str(file_path),
@@ -686,7 +694,8 @@ class EnhancedTreeSitterChunker:
         imports = []
         if ext in self.queries and 'imports' in self.queries[ext]:
             query = self.queries[ext]['imports']
-            captures = query.captures(tree.root_node)
+            cursor = QueryCursor(query)
+            captures = cursor.captures(tree.root_node)
             if 'import' in captures:
                 for node in captures['import']:
                     import_text = content[node.start_byte:node.end_byte]
@@ -698,7 +707,8 @@ class EnhancedTreeSitterChunker:
         functions = []
         if ext in self.queries and 'functions' in self.queries[ext]:
             query = self.queries[ext]['functions']
-            captures = query.captures(tree.root_node)
+            cursor = QueryCursor(query)
+            captures = cursor.captures(tree.root_node)
             
             func_names = captures.get('func-name', [])
             func_defs = captures.get('func-def', [])
@@ -714,7 +724,8 @@ class EnhancedTreeSitterChunker:
         classes = []
         if ext in self.queries and 'classes' in self.queries[ext]:
             query = self.queries[ext]['classes']
-            captures = query.captures(tree.root_node)
+            cursor = QueryCursor(query)
+            captures = cursor.captures(tree.root_node)
             
             class_names = captures.get('class-name', [])
             class_defs = captures.get('class-def', [])
@@ -738,7 +749,7 @@ class EnhancedTreeSitterChunker:
         
         full_content = f"{imports_text}\n\n{node_content}" if imports_text else node_content
         
-        chunk_id = self._generate_chunk_id(file_path, symbol_name, node.type)
+        chunk_id = self._generate_chunk_id(file_path, symbol_name, node.type, node.start_byte, node.end_byte)
         
         return CodeBaseChunk(
             id=chunk_id,

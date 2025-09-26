@@ -209,18 +209,45 @@ class EnhancedContextFusion:
         return merged_groups
 
     def _merge_two_chunks(self, chunk1: CodeBaseChunk, chunk2: CodeBaseChunk) -> CodeBaseChunk:
-        """Merge two chunks into one"""
-        # Combine content, avoiding duplication
-        lines1 = set(chunk1.content.split('\n'))
-        lines2 = chunk2.content.split('\n')
+        """Merge two chunks into one while preserving code structure"""
+        # Ensure chunks are from the same file
+        if chunk1.file_path != chunk2.file_path:
+            # Can't merge chunks from different files - return the higher scored one
+            return chunk1 if chunk1.start_line <= chunk2.start_line else chunk2
         
-        combined_lines = list(lines1)
-        for line in lines2:
-            if line not in lines1:
-                combined_lines.append(line)
+        # Determine order based on line numbers
+        if chunk1.start_line <= chunk2.start_line:
+            first_chunk, second_chunk = chunk1, chunk2
+        else:
+            first_chunk, second_chunk = chunk2, chunk1
         
-        # Sort by original order (this is approximate)
-        combined_content = '\n'.join(combined_lines)
+        # Check for overlap or adjacency
+        if second_chunk.start_line <= first_chunk.end_line + 2:
+            # Chunks overlap or are adjacent - merge by combining content
+            if second_chunk.start_line <= first_chunk.end_line:
+                # Overlapping - use the content from start of first to end of second
+                combined_content = first_chunk.content
+                
+                # Add non-overlapping portion of second chunk
+                second_lines = second_chunk.content.split('\n')
+                first_lines = first_chunk.content.split('\n')
+                
+                # Calculate overlap
+                overlap_lines = first_chunk.end_line - second_chunk.start_line + 1
+                if overlap_lines > 0 and overlap_lines < len(second_lines):
+                    # Add the non-overlapping part of the second chunk
+                    non_overlap_content = '\n'.join(second_lines[overlap_lines:])
+                    if non_overlap_content.strip():
+                        combined_content += '\n' + non_overlap_content
+                else:
+                    # No meaningful overlap, just concatenate
+                    combined_content = first_chunk.content + '\n' + second_chunk.content
+            else:
+                # Adjacent but not overlapping
+                combined_content = first_chunk.content + '\n' + second_chunk.content
+        else:
+            # Chunks are far apart - just concatenate with separator
+            combined_content = first_chunk.content + '\n\n# ... (gap) ...\n\n' + second_chunk.content
         
         return CodeBaseChunk(
             id=f"{chunk1.id}_merged_{chunk2.id}",

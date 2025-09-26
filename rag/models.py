@@ -6,6 +6,12 @@ class ChatRequest(BaseModel):
     message: str
     project_path: str
     relevant_only: bool = False
+    # Context expansion parameters
+    expand_window: bool = False
+    expansion_level: str = "moderate"  # "conservative", "moderate", "aggressive"
+    session_id: Optional[str] = None
+    max_context_tokens: int = 8000
+    top_k: int = 10
 
 class TokenUsage(BaseModel):
     prompt_tokens: int
@@ -20,7 +26,7 @@ class ChatResponse(BaseModel):
 class IndexCodeBaseRequest(BaseModel):
     project_path: str
     file_patterns: Optional[List[str]] = None
-    force_reindex: bool = False
+    force_reindex: bool = True
 
 class IndexCodeBaseResponse(BaseModel):
     status: str
@@ -68,6 +74,11 @@ class QueryRequest(BaseModel):
     max_context_tokens: int = 8000
     top_k: int = 10
     include_metadata: bool = False
+    # Context expansion parameters
+    expand_window: bool = False
+    expansion_level: str = "moderate"  # "conservative", "moderate", "aggressive"
+    previous_chunk_ids: Optional[List[str]] = None
+    session_id: Optional[str] = None  # For UI session tracking
 
 class QueryResponse(BaseModel):
     context: str
@@ -80,6 +91,11 @@ class RAGResponse(BaseModel):
     chunks_used: List[CodeBaseChunk]
     total_tokens: int
     retrieval_time_ms: float
+    # Expansion information
+    was_expanded: bool = False
+    expansion_level: Optional[str] = None
+    chunks_before_expansion: int = 0
+    tokens_before_expansion: int = 0
 
 class RetrievalResult(BaseModel):
     chunk: CodeBaseChunk
